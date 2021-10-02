@@ -17,7 +17,10 @@ session = requests.Session()
 session.headers.update(headers)
 response =  session.get(url_lk)
 response =  session.post(url_auth, data=data)
-response =  session.get(url_lk)
 soup = BeautifulSoup(response.text, 'lxml')
-
-print(soup)
+if soup.p.text != '1':
+    print('Авторизация неуспешна, проверьте параметры авторизации.')
+else:
+    response =  session.get(url_lk)
+    soup = BeautifulSoup(response.text, 'lxml')
+    print(soup)

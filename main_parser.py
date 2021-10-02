@@ -1,7 +1,7 @@
 from requests import Session as req_session
 from bs4 import BeautifulSoup
 from auth_params import *
-from re import compile as re_comp
+from re import compile as re_comp, search as re_search, split as re_split
 
 
 def auth_lk():
@@ -35,15 +35,10 @@ def files_count_range():
     response =  session.get(url_forms_gr)
     soup = BeautifulSoup(response.text, 'lxml')
     soup = soup.find("span", id="table_mes")
-    # номер последней страницы содержится в четвертом теге <a> внутри span. Перебираем все теги <a> до
-    # четвергого и прерываем цикл.
-    num_span_a=0
-    for child_span_a in soup.find_all("a"):
-        if num_span_a == 3 :
-            #Нужное значение находится в строке в параметре onclick
-            child_span_a=child_span_a.get("onclick")
-            break
-        num_span_a+=1
+    # номер последней страницы содержится внутри span в теге <a>, где строка " >> "
+    child_span_a=soup.find("a", string=" >> ")
+    # Нужное значение находится в строке в параметре onclick
+    child_span_a=child_span_a.get("onclick")
     # Перед тем как вернуть, преобразуем значение в число
     return int(child_span_a[-4:-2])
 
@@ -83,8 +78,69 @@ def get_all_files_group():
             files_group.append(files_params)
     return files_group
 
+def number_week_null():
+    # функция определения номера нулевой недели. Возвращает номер недели.
+    url_forms_tt = 'https://lk.sut.ru/project/cabinet/forms/raspisanie.php'
+    # Минимально в семестре 17 недель, поэтому для оптимизации, недели раньше 17ой не просматриваются.
+    # Будем считать, что семестр не может блится больше 52 недель. Если функция возвращает значение 53,
+    # значит произошла ошибка
+    for week_search in range (17, 54):
+        response =  session.get(url_forms_tt + '?week=' + str(week_search))
+        soup = BeautifulSoup(response.text, 'lxml')
+        if re_search("№0 ", soup.h3.text):
+            break
+    return week_search
+
+def get_all_timetable():
+    url_forms_tt = 'https://lk.sut.ru/project/cabinet/forms/raspisanie.php'
+    # объявлям list, в котором будут все записи
+    tt_all=[]
+    max_week = number_week_null()
+    if max_week != 53:
+        for week in range(1, max_week):
+            response =  session.get(url_forms_tt + '?week=' + str(week))
+            soup = BeautifulSoup(response.text, 'lxml')
+            tt_week = [week, soup.h3.text[-27:-16], soup.h3.text[-13:-3]]
+            # переходиим в таблицу с данными
+            if soup.find("div", {"class": "alert alert-info"}, string="Занятий не найдено") == None:
+                soup = soup.table
+                soup = soup.tbody
+                # Цикл для всех строк (записей) в таблице. Строки обособлены тегом <tr>, а у нужным нам строк
+                # id начинается на tr. Находим таки строки с помощью регулярного выражения
+                tt_day=[]
+                day_number=-1
+                for child_tr in soup.find_all("tr"):
+                    if child_tr.get("style") != None:
+                        day_number+=1
+                        tt_day.append([child_tr.b.text, child_tr.small.text,[]])
+                    else:
+                        one_day=[]
+                        num_td=0
+                        for child_td in child_tr.find_all("td"):
+                            if num_td == 1:
+                                one_day.append(child_td.b.text)
+                                # Костыль, как убрать не придумал
+                                type_lesson=str(child_td.small)[7:-8]
+                                one_day.append(type_lesson.split("<br/>")[0])
+                            else:
+                                one_day.append(child_td.text)
+                            num_td+=1
+                        tt_day[day_number][2].append(one_day)
+                tt_week.append(tt_day)
+            else:
+                tt_week.append(None)
+            tt_all.append(tt_week)
+    else:
+        tt_all=False
+    return tt_all
+
 session = req_session()
 if auth_lk():
-    print(get_all_files_group()[0][5][1])
+    #print(get_all_files_group()[0][5][1])
+    timetable = get_all_timetable()
+    if timetable:
+        print(timetable[17])
+    else:
+        print('Произошла ошибка при парсинге расписания')
 else:
     print('Авторизация неуспешна, проверьте параметры авторизации.')

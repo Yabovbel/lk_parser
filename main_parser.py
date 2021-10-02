@@ -2,7 +2,8 @@ import requests
 from bs4 import BeautifulSoup
 from auth_params import *
 
-url = 'https://lk.sut.ru/?login=yes'
+url_lk = 'https://lk.sut.ru/?login=yes'
+url_auth = 'https://lk.sut.ru/cabinet/lib/autentificationok.php'
 # представляемся сайту обычным браузером для того, чтоб пройти проверку на робота. Для этого прописываем
 # рандомный браузер в user-agent
 headers = {
@@ -14,8 +15,9 @@ data = {
 }
 session = requests.Session()
 session.headers.update(headers)
-response =  session.post(url, data=data)
-#response = requests.get(url, headers = headers)
+response =  session.get(url_lk)
+response =  session.post(url_auth, data=data)
+response =  session.get(url_lk)
 soup = BeautifulSoup(response.text, 'lxml')
 
 print(soup)

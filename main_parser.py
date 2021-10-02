@@ -85,6 +85,6 @@ def get_all_files_group():
 
 session = req_session()
 if auth_lk():
-    print(get_all_files_group()[263])
+    print(get_all_files_group()[0][5][1])
 else:
     print('Авторизация неуспешна, проверьте параметры авторизации.')

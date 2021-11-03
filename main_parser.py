@@ -1,8 +1,11 @@
-from requests import Session as req_session
+from asyncio import windows_events
+#from requests import Session as req_session
 from bs4 import BeautifulSoup
 from auth_params import *
 from re import compile as re_comp, search as re_search, split as re_split
-
+import asyncio
+import time
+from aiohttp import ClientSession
 
 def auth_lk():
     # функция прохождения авторизации на портале. Если возвращает истину, то авторизация прошла успешно
@@ -42,40 +45,48 @@ def files_count_range():
     # Перед тем как вернуть, преобразуем значение в число
     return int(child_span_a[-4:-2])
 
+async def fetch_async(loop, async_files_count_range):
+    tasks = []
+    async with ClientSession() as session:
+        for page in range(1, async_files_count_range):
+            response =  session.get(url_forms_gr + '?page=' + str(page))
+            soup = BeautifulSoup(response.text, 'lxml')
+            # переходиим в таблицу с данными
+            soup = soup.find("table", id="mytable")
+            soup = soup.tbody
+            # Цикл для всех строк (записей) в таблице. Строки обособлены тегом <tr>, а у нужным нам строк
+            # id начинается на tr. Находим таки строки с помощью регулярного выражения
+            for child_tr in soup.find_all("tr", id=re_comp("^tr")):
+                # объявляем list, в котором будут все значения одной записи
+                files_params=[]
+                # каждое значение (ячейка столбца) внутри строки обособлена тегом <td>. Находим такие значения
+                num_td=0
+                for child_td in child_tr.find_all("td"):
+                    # из столбцов 1-5 просто берем текстовые значения
+                    if num_td < 5:
+                        files_params.append(child_td.text)
+                        num_td+=1
+                    # в шестом столбце может хранится несколько ссылок на файлы, поэтому его обрабатываем отдельно
+                    else:
+                        # обявляем list для всех ссылок текущей записи
+                        files_links=[]
+                        # каждая ссылка находится в параметре href тега <a>. Находим такие теги и берем из
+                        # них значение параметра.
+                        for child_a in child_td.find_all("a"):
+                                files_links.append(child_a.get("href"))
+                        files_params.append(files_links)
+                        break
+                files_group.append(files_params)
+
+
 def get_all_files_group():
     # функция парсинга файлов группы. Возвращает list с полученными занчениями
     url_forms_gr = 'https://lk.sut.ru/project/cabinet/forms/files_group_pr.php'
     # объявлям list, в котором будут все записи
     files_group=[]
-    for page in range(1, files_count_range()+1):
-        response =  session.get(url_forms_gr + '?page=' + str(page))
-        soup = BeautifulSoup(response.text, 'lxml')
-        # переходиим в таблицу с данными
-        soup = soup.find("table", id="mytable")
-        soup = soup.tbody
-        # Цикл для всех строк (записей) в таблице. Строки обособлены тегом <tr>, а у нужным нам строк
-        # id начинается на tr. Находим таки строки с помощью регулярного выражения
-        for child_tr in soup.find_all("tr", id=re_comp("^tr")):
-            # объявляем list, в котором будут все значения одной записи
-            files_params=[]
-            # каждое значение (ячейка столбца) внутри строки обособлена тегом <td>. Находим такие значения
-            num_td=0
-            for child_td in child_tr.find_all("td"):
-                # из столбцов 1-5 просто берем текстовые значения
-                if num_td < 5:
-                    files_params.append(child_td.text)
-                    num_td+=1
-                # в шестом столбце может хранится несколько ссылок на файлы, поэтому его обрабатываем отдельно
-                else:
-                    # обявляем list для всех ссылок текущей записи
-                    files_links=[]
-                    # каждая ссылка находится в параметре href тега <a>. Находим такие теги и берем из
-                    # них значение параметра.
-                    for child_a in child_td.find_all("a"):
-                            files_links.append(child_a.get("href"))
-                    files_params.append(files_links)
-                    break
-            files_group.append(files_params)
+    loop = asyncio.get_event_loop()
+    future = asyncio.ensure_future(fetch_async(loop, files_count_range()+1))
+    
     return files_group
 
 def number_week_null():
@@ -87,31 +98,40 @@ def number_week_null():
     for week_search in range (17, 54):
         response =  session.get(url_forms_tt + '?week=' + str(week_search))
         soup = BeautifulSoup(response.text, 'lxml')
+        # перебираем недели до тех пор, пока не найдет неделю, в заголовке которой сочетание "№0 "
         if re_search("№0 ", soup.h3.text):
             break
     return week_search
 
 def get_all_timetable():
+    # функция парсинга всего распиания. Возвращает list с полученными значениями
     url_forms_tt = 'https://lk.sut.ru/project/cabinet/forms/raspisanie.php'
-    # объявлям list, в котором будут все записи
+    # объявлям list, в котором будут данные со всех недель
     tt_all=[]
     max_week = number_week_null()
     if max_week != 53:
         for week in range(1, max_week):
             response =  session.get(url_forms_tt + '?week=' + str(week))
             soup = BeautifulSoup(response.text, 'lxml')
+            # объявляем и начинаем заполнять list, в котором будут данные одной недели. Указываем номер
+            # недели, парсим начальную и конечную дату недели
             tt_week = [week, soup.h3.text[-27:-16], soup.h3.text[-13:-3]]
-            # переходиим в таблицу с данными
+            # проверяем наличие занятий на неделе
             if soup.find("div", {"class": "alert alert-info"}, string="Занятий не найдено") == None:
                 soup = soup.table
                 soup = soup.tbody
-                # Цикл для всех строк (записей) в таблице. Строки обособлены тегом <tr>, а у нужным нам строк
-                # id начинается на tr. Находим таки строки с помощью регулярного выражения
+                # объявляем list, котором будет инфа о всех днях
                 tt_day=[]
+                # считает номер текущего дня в неделе, для заполнения list
                 day_number=-1
+                # Цикл для всех строк в таблице. Строки обособлены тегом <tr>.
                 for child_tr in soup.find_all("tr"):
+                    # строки (в которых указана дата, а не занятие), которые начинают день имеют параметр
+                    # style. По наличию его, мы их и различаем
                     if child_tr.get("style") != None:
-                        day_number+=1
+                        day_number += 1
+                        # добавляем новый день в list всех дней. Укзаываем название дня недели, дату и
+                        # оставляем пустой list для заполнения занятиями
                         tt_day.append([child_tr.b.text, child_tr.small.text,[]])
                     else:
                         one_day=[]
@@ -134,13 +154,15 @@ def get_all_timetable():
         tt_all=False
     return tt_all
 
-session = req_session()
+#session = req_session()
+start_time=time.time()
 if auth_lk():
-    #print(get_all_files_group()[0][5][1])
-    timetable = get_all_timetable()
-    if timetable:
-        print(timetable[17])
-    else:
-        print('Произошла ошибка при парсинге расписания')
+    print(get_all_files_group()[0])
+#    timetable = get_all_timetable()
+#     if timetable:
+#         print(timetable[17])
+#     else:
+#         print('Произошла ошибка при парсинге расписания')
 else:
     print('Авторизация неуспешна, проверьте параметры авторизации.')
+print('Время выполнения запроса:', time.time()-start_time)

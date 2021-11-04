@@ -1,4 +1,3 @@
-from requests import Session as req_session
 from bs4 import BeautifulSoup
 from auth_params import *
 from re import compile as re_comp, search as re_search, split as re_split
@@ -6,48 +5,20 @@ import asyncio
 import time
 from aiohttp import ClientSession
 
-# def auth_lk():
-#     # функция прохождения авторизации на портале. Если возвращает истину, то авторизация прошла успешно
-#     url_lk = 'https://lk.sut.ru/?login=yes'
-#     url_auth = 'https://lk.sut.ru/cabinet/lib/autentificationok.php'
-#     # представляемся сайту обычным браузером для того, чтоб пройти проверку на робота. Для этого прописываем
-#     # рандомный браузер в user-agent
-#     headers = {
-#             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/94.0.4606.61 Safari/537.36'
-#     }
-#     data = {
-#         'users': LOGIN,
-#         'parole': PASSWORD,
-#     }
-#     session.headers.update(headers)
-#     # просто загружаем страницу авторизации, чтоб открыть сессию на сервере. ХЗ зачем, но без этого
-#     # не работает
-#     session.get(url_lk)
-#     # авторизируемся. Если в ответ получим 1, то значит все хорошо
-#     response =  session.post(url_auth, data=data)
-#     soup = BeautifulSoup(response.text, 'lxml')
-#     # еще раз просто загрузаем страницу ЛК, иначе в дельнейшем у нас не будут грузится страницы для
-#     # парсинга. Она нам не нужна, но без ее загрузки ничего не работает. ХЗ почему, это ведь бонч.
-#     session.get(url_lk)
-#     return soup.p.text == '1'
-
 async def auth_lk(session):
     # функция прохождения авторизации на портале. Если возвращает истину, то авторизация прошла успешно
     url_lk = 'https://lk.sut.ru/?login=yes'
     url_auth = 'https://lk.sut.ru/cabinet/lib/autentificationok.php'
     # представляемся сайту обычным браузером для того, чтоб пройти проверку на робота. Для этого прописываем
     # рандомный браузер в user-agent
-    headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/94.0.4606.61 Safari/537.36'
-    }
     data = {
         'users': LOGIN,
         'parole': PASSWORD,
     }
-    #session.headers.update(headers)
+    #session.headers==headers
     # просто загружаем страницу авторизации, чтоб открыть сессию на сервере. ХЗ зачем, но без этого
     # не работает
-    await session.get(url_lk, headers=headers)
+    await session.get(url_lk)
     # авторизируемся. Если в ответ получим 1, то значит все хорошо
     response = await session.post(url_auth, data=data)
     resp_t = await response.text()
@@ -108,7 +79,10 @@ async def fetch_url_data(session, url_list_files_gr):
 async def fetch_async(loop):
     url_forms_gr = "https://lk.sut.ru/project/cabinet/forms/files_group_pr.php"
     tasks = []
-    async with ClientSession() as session:
+    header_new = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/94.0.4606.61 Safari/537.36'
+    }
+    async with ClientSession(headers=header_new) as session:
         auth_lk_result = await auth_lk(session)
         if auth_lk_result:
             async_files_count_range = await files_count_range(session)+1
@@ -145,7 +119,7 @@ async def async_get_week(session, week_pool, week_num):
 async def async_get_all_timetable(session, week):
     # функция парсинга всего распиания. Возвращает list с полученными значениями
     url_forms_tt = 'https://lk.sut.ru/project/cabinet/forms/raspisanie.php'
-    async with session.get(url_forms_tt + '?week=' + str(week)) as response:
+    async with session.get(url_forms_tt + '?week=' + str(week), timeout=30) as response:
         response_text = await response.text()
         soup = BeautifulSoup(response_text, 'lxml')
         # объявляем и начинаем заполнять list, в котором будут данные одной недели. Указываем номер
@@ -153,7 +127,6 @@ async def async_get_all_timetable(session, week):
         tt_week = [week, soup.h3.text[-27:-16], soup.h3.text[-13:-3]]
         # проверяем наличие занятий на неделе
         if soup.find("div", {"class": "alert alert-info"}, string="Занятий не найдено") == None:
-            print(soup)
             soup = soup.table
             soup = soup.tbody
             # объявляем list, котором будет инфа о всех днях
@@ -189,7 +162,10 @@ async def async_get_all_timetable(session, week):
 
 async def async_number_week_num(loop):
     tasks = []
-    async with ClientSession() as session:
+    header_new = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/94.0.4606.61 Safari/537.36'
+    }
+    async with ClientSession(headers=header_new) as session:
         auth_lk_result = await auth_lk(session)
         if auth_lk_result:
             for week_search_pool in range (3):
@@ -230,7 +206,7 @@ def get_all_timetable():
 
 start_time=time.time()
 # get_fg_res = get_all_files_group()
-timetable = get_all_timetable()
+get_tt_res = get_all_timetable()
 come_time=time.time()
 # if get_fg_res[0] == 1:
 #     get_fg_res=get_fg_res[1]
@@ -240,9 +216,14 @@ come_time=time.time()
 #         print('Error 0: Авторизация неуспешна, проверьте параметры авторизации.')
 
 
-
-#     elif get_tt_res[1] == 1:
-#         print('Error 1: Ошибка запроса количества учебных недель.')
+if get_tt_res[0] == 1:
+    get_tt_res=get_tt_res[1]
+    print(get_tt_res)
+else:
+    if get_tt_res[1] == 0:
+        print('Error 0: Авторизация неуспешна, проверьте параметры авторизации.')
+    elif get_tt_res[1] == 1:
+        print('Error 1: Ошибка запроса количества учебных недель.')
 
     # if timetable:
     #     print(timetable[17])

@@ -225,9 +225,5 @@ else:
     elif get_tt_res[1] == 1:
         print('Error 1: Ошибка запроса количества учебных недель.')
 
-    # if timetable:
-    #     print(timetable[17])
-    # else:
-    #     print('Произошла ошибка при парсинге расписания')
 print('Время выполнения запроса:', int((come_time-start_time)*1000), 'ms')
 print('Полное время обработки запроса:', int((time.time()-start_time)*1000), 'ms')

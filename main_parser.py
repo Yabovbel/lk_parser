@@ -116,10 +116,9 @@ async def fetch_async(loop):
                 task = asyncio.ensure_future(fetch_url_data(session, url_forms_gr + '?page=' + str(page)))
                 tasks.append(task)
             responses = await asyncio.gather(*tasks)
-            responses_with_err=[1, responses]
+            return [1, responses]
         else:
-            responses_with_err=[0, 'bad_auth']
-    return responses_with_err
+            return [0, 0]
     
 def get_all_files_group():
     # функция парсинга файлов группы. Возвращает list с полученными занчениями
@@ -143,9 +142,52 @@ async def async_get_week(session, week_pool, week_num):
             return week_search
     return 
 
+async def async_get_all_timetable(session, week):
+    # функция парсинга всего распиания. Возвращает list с полученными значениями
+    url_forms_tt = 'https://lk.sut.ru/project/cabinet/forms/raspisanie.php'
+    async with session.get(url_forms_tt + '?week=' + str(week)) as response:
+        response_text = await response.text()
+        soup = BeautifulSoup(response_text, 'lxml')
+        # объявляем и начинаем заполнять list, в котором будут данные одной недели. Указываем номер
+        # недели, парсим начальную и конечную дату недели
+        tt_week = [week, soup.h3.text[-27:-16], soup.h3.text[-13:-3]]
+        # проверяем наличие занятий на неделе
+        if soup.find("div", {"class": "alert alert-info"}, string="Занятий не найдено") == None:
+            print(soup)
+            soup = soup.table
+            soup = soup.tbody
+            # объявляем list, котором будет инфа о всех днях
+            tt_day=[]
+            # считает номер текущего дня в неделе, для заполнения list
+            day_number=-1
+            # Цикл для всех строк в таблице. Строки обособлены тегом <tr>.
+            for child_tr in soup.find_all("tr"):
+                # строки (в которых указана дата, а не занятие), которые начинают день имеют параметр
+                # style. По наличию его, мы их и различаем
+                if child_tr.get("style") != None:
+                    day_number += 1
+                    # добавляем новый день в list всех дней. Укзаываем название дня недели, дату и
+                    # оставляем пустой list для заполнения занятиями
+                    tt_day.append([child_tr.b.text, child_tr.small.text,[]])
+                else:
+                    one_day=[]
+                    num_td=0
+                    for child_td in child_tr.find_all("td"):
+                        if num_td == 1:
+                            one_day.append(child_td.b.text)
+                            # Костыль, как убрать не придумал
+                            type_lesson=str(child_td.small)[7:-8]
+                            one_day.append(type_lesson.split("<br/>")[0])
+                        else:
+                            one_day.append(child_td.text)
+                        num_td+=1
+                    tt_day[day_number][2].append(one_day)
+            tt_week.append(tt_day)
+        else:
+            tt_week.append(None)
+    return tt_week
 
 async def async_number_week_num(loop):
-    url_forms_tt = 'https://lk.sut.ru/project/cabinet/forms/raspisanie.php'
     tasks = []
     async with ClientSession() as session:
         auth_lk_result = await auth_lk(session)
@@ -155,23 +197,21 @@ async def async_number_week_num(loop):
                     task = asyncio.ensure_future(async_get_week(session, week_search_pool, week_search))
                     tasks.append(task)
                 responses = await asyncio.gather(*tasks)
+                tasks=[]
                 if not(all([x is None for x in responses])):
                     break
             for num_week in responses:
                 if num_week != None:
                     break
-            print(num_week)
-            #async_rasp_count_range = await async_number_week_num(session)+1
-            # for page in range(1, async_files_count_range):
-            #     task = asyncio.ensure_future(fetch_url_data(session, url_forms_tt + '?page=' + str(page)))
-            #     tasks.append(task)
-            # responses = await asyncio.gather(*tasks)
-            responses_with_err=[1, responses]
+            else:
+                return [0, 1]
+            for week in range(1, num_week):
+                task = asyncio.ensure_future(async_get_all_timetable(session, week))
+                tasks.append(task)
+            responses = await asyncio.gather(*tasks)
+            return [1, responses]
         else:
-            responses_with_err=[0, 'bad_auth']
-    return responses_with_err
-
-    
+            return [0, 0]
 
 def get_all_timetable():
     # функция определения номера нулевой недели. Возвращает номер недели.
@@ -187,58 +227,6 @@ def get_all_timetable():
     loop.run_until_complete(future)
     responses = future.result()
     return responses
-        
-
-#def get_all_timetable():
-    # функция парсинга всего распиания. Возвращает list с полученными значениями
-    url_forms_tt = 'https://lk.sut.ru/project/cabinet/forms/raspisanie.php'
-    # объявлям list, в котором будут данные со всех недель
-    tt_all=[]
-    max_week = number_week_num()
-    if max_week != 53:
-        for week in range(1, max_week):
-            response =  session.get(url_forms_tt + '?week=' + str(week))
-            soup = BeautifulSoup(response.text, 'lxml')
-            # объявляем и начинаем заполнять list, в котором будут данные одной недели. Указываем номер
-            # недели, парсим начальную и конечную дату недели
-            tt_week = [week, soup.h3.text[-27:-16], soup.h3.text[-13:-3]]
-            # проверяем наличие занятий на неделе
-            if soup.find("div", {"class": "alert alert-info"}, string="Занятий не найдено") == None:
-                soup = soup.table
-                soup = soup.tbody
-                # объявляем list, котором будет инфа о всех днях
-                tt_day=[]
-                # считает номер текущего дня в неделе, для заполнения list
-                day_number=-1
-                # Цикл для всех строк в таблице. Строки обособлены тегом <tr>.
-                for child_tr in soup.find_all("tr"):
-                    # строки (в которых указана дата, а не занятие), которые начинают день имеют параметр
-                    # style. По наличию его, мы их и различаем
-                    if child_tr.get("style") != None:
-                        day_number += 1
-                        # добавляем новый день в list всех дней. Укзаываем название дня недели, дату и
-                        # оставляем пустой list для заполнения занятиями
-                        tt_day.append([child_tr.b.text, child_tr.small.text,[]])
-                    else:
-                        one_day=[]
-                        num_td=0
-                        for child_td in child_tr.find_all("td"):
-                            if num_td == 1:
-                                one_day.append(child_td.b.text)
-                                # Костыль, как убрать не придумал
-                                type_lesson=str(child_td.small)[7:-8]
-                                one_day.append(type_lesson.split("<br/>")[0])
-                            else:
-                                one_day.append(child_td.text)
-                            num_td+=1
-                        tt_day[day_number][2].append(one_day)
-                tt_week.append(tt_day)
-            else:
-                tt_week.append(None)
-            tt_all.append(tt_week)
-    else:
-        tt_all=False
-    return tt_all
 
 start_time=time.time()
 # get_fg_res = get_all_files_group()
@@ -248,7 +236,13 @@ come_time=time.time()
 #     get_fg_res=get_fg_res[1]
 #     print(get_fg_res)
 # else:
-#     print('Авторизация неуспешна, проверьте параметры авторизации.')
+#     if get_fg_res[1] == 0:
+#         print('Error 0: Авторизация неуспешна, проверьте параметры авторизации.')
+
+
+
+#     elif get_tt_res[1] == 1:
+#         print('Error 1: Ошибка запроса количества учебных недель.')
 
     # if timetable:
     #     print(timetable[17])

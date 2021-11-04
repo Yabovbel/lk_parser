@@ -59,7 +59,7 @@ async def fetch_async(loop, r):
 
 
 if __name__ == '__main__':
-    for ntimes in [2]:
+    for ntimes in [15]:
         start_time = time.time()
         data=[]
         loop = asyncio.get_event_loop()
@@ -67,5 +67,5 @@ if __name__ == '__main__':
         # будет выполняться до тех пор, пока не завершится или не возникнет ошибка
         loop.run_until_complete(future)
         responses = future.result()
-        print(responses)
+        #print(responses)
         print(f'Получено {ntimes} результатов запроса за {time.time() - start_time} секунд')

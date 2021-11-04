@@ -132,13 +132,6 @@ def get_all_files_group():
     responses = future.result()
     return responses
 
-    # url_forms_gr = 'https://lk.sut.ru/project/cabinet/forms/files_group_pr.php'
-    # future_tasks=[fetch_url_data(url_forms_gr + '?page=' + str(page)) for page in range(1, files_count_range()+1)]
-    # loop = asyncio.get_event_loop()
-    # loop.run_until_complete(asyncio.wait(future_tasks))
-    
-   
-
 def number_week_null():
     # функция определения номера нулевой недели. Возвращает номер недели.
     url_forms_tt = 'https://lk.sut.ru/project/cabinet/forms/raspisanie.php'

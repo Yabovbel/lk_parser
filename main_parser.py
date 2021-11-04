@@ -118,13 +118,13 @@ async def fetch_async(loop):
             responses = await asyncio.gather(*tasks)
             responses_with_err=[1, responses]
         else:
-            responses_with_err=[0]
+            responses_with_err=[0, 'bad_auth']
     return responses_with_err
     
 def get_all_files_group():
     # функция парсинга файлов группы. Возвращает list с полученными занчениями
     # объявлям list, в котором будут все записи
-    files_group=[]
+    # files_group=[]
     loop = asyncio.get_event_loop()
     future = asyncio.ensure_future(fetch_async(loop))
     # будет выполняться до тех пор, пока не завершится или не возникнет ошибка
@@ -132,26 +132,69 @@ def get_all_files_group():
     responses = future.result()
     return responses
 
-def number_week_null():
+async def async_get_week(session, week_pool, week_num):
+    url_forms_tt = 'https://lk.sut.ru/project/cabinet/forms/raspisanie.php'
+    week_search = week_num+week_pool*12+17
+    async with session.get(url_forms_tt + '?week=' + str(week_search)) as response:
+        resp_t_nwn = await response.text()
+        soup = BeautifulSoup(resp_t_nwn, 'lxml')
+        # перебираем недели до тех пор, пока не найдет неделю, в заголовке которой сочетание "№0 "
+        if re_search("№0 ", soup.h3.text):
+            return week_search
+    return 
+
+
+async def async_number_week_num(loop):
+    url_forms_tt = 'https://lk.sut.ru/project/cabinet/forms/raspisanie.php'
+    tasks = []
+    async with ClientSession() as session:
+        auth_lk_result = await auth_lk(session)
+        if auth_lk_result:
+            for week_search_pool in range (3):
+                for week_search in range (12):
+                    task = asyncio.ensure_future(async_get_week(session, week_search_pool, week_search))
+                    tasks.append(task)
+                responses = await asyncio.gather(*tasks)
+                if not(all([x is None for x in responses])):
+                    break
+            for num_week in responses:
+                if num_week != None:
+                    break
+            print(num_week)
+            #async_rasp_count_range = await async_number_week_num(session)+1
+            # for page in range(1, async_files_count_range):
+            #     task = asyncio.ensure_future(fetch_url_data(session, url_forms_tt + '?page=' + str(page)))
+            #     tasks.append(task)
+            # responses = await asyncio.gather(*tasks)
+            responses_with_err=[1, responses]
+        else:
+            responses_with_err=[0, 'bad_auth']
+    return responses_with_err
+
+    
+
+def get_all_timetable():
     # функция определения номера нулевой недели. Возвращает номер недели.
     url_forms_tt = 'https://lk.sut.ru/project/cabinet/forms/raspisanie.php'
     # Минимально в семестре 17 недель, поэтому для оптимизации, недели раньше 17ой не просматриваются.
     # Будем считать, что семестр не может блится больше 52 недель. Если функция возвращает значение 53,
     # значит произошла ошибка
-    for week_search in range (17, 54):
-        response =  session.get(url_forms_tt + '?week=' + str(week_search))
-        soup = BeautifulSoup(response.text, 'lxml')
-        # перебираем недели до тех пор, пока не найдет неделю, в заголовке которой сочетание "№0 "
-        if re_search("№0 ", soup.h3.text):
-            break
-    return week_search
+    # for week_search in range (17, 54):
+    # for week_search_pool in range (3):
+    loop = asyncio.get_event_loop()
+    future = asyncio.ensure_future(async_number_week_num(loop))
+    # будет выполняться до тех пор, пока не завершится или не возникнет ошибка
+    loop.run_until_complete(future)
+    responses = future.result()
+    return responses
+        
 
-def get_all_timetable():
+#def get_all_timetable():
     # функция парсинга всего распиания. Возвращает list с полученными значениями
     url_forms_tt = 'https://lk.sut.ru/project/cabinet/forms/raspisanie.php'
     # объявлям list, в котором будут данные со всех недель
     tt_all=[]
-    max_week = number_week_null()
+    max_week = number_week_num()
     if max_week != 53:
         for week in range(1, max_week):
             response =  session.get(url_forms_tt + '?week=' + str(week))
@@ -198,20 +241,18 @@ def get_all_timetable():
     return tt_all
 
 start_time=time.time()
-get_fg_res = get_all_files_group()
+# get_fg_res = get_all_files_group()
+timetable = get_all_timetable()
 come_time=time.time()
-if get_fg_res[0] == 1:
-    get_fg_res=get_fg_res[1]
-    print(get_fg_res)
-else:
-    print('Авторизация неуспешна, проверьте параметры авторизации.')
+# if get_fg_res[0] == 1:
+#     get_fg_res=get_fg_res[1]
+#     print(get_fg_res)
+# else:
+#     print('Авторизация неуспешна, проверьте параметры авторизации.')
 
-    # timetable = get_all_timetable()
     # if timetable:
     #     print(timetable[17])
     # else:
     #     print('Произошла ошибка при парсинге расписания')
-# else:
-#     print('Авторизация неуспешна, проверьте параметры авторизации.')
-print('Время выполнения запроса:', come_time-start_time)
-print('Полное время обработки запроса:', time.time()-start_time)
+print('Время выполнения запроса:', int((come_time-start_time)*1000), 'ms')
+print('Полное время обработки запроса:', int((time.time()-start_time)*1000), 'ms')

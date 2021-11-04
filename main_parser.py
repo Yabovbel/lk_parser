@@ -1,5 +1,4 @@
-from asyncio import windows_events
-#from requests import Session as req_session
+from requests import Session as req_session
 from bs4 import BeautifulSoup
 from auth_params import *
 from re import compile as re_comp, search as re_search, split as re_split
@@ -7,7 +6,32 @@ import asyncio
 import time
 from aiohttp import ClientSession
 
-def auth_lk():
+# def auth_lk():
+#     # функция прохождения авторизации на портале. Если возвращает истину, то авторизация прошла успешно
+#     url_lk = 'https://lk.sut.ru/?login=yes'
+#     url_auth = 'https://lk.sut.ru/cabinet/lib/autentificationok.php'
+#     # представляемся сайту обычным браузером для того, чтоб пройти проверку на робота. Для этого прописываем
+#     # рандомный браузер в user-agent
+#     headers = {
+#             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/94.0.4606.61 Safari/537.36'
+#     }
+#     data = {
+#         'users': LOGIN,
+#         'parole': PASSWORD,
+#     }
+#     session.headers.update(headers)
+#     # просто загружаем страницу авторизации, чтоб открыть сессию на сервере. ХЗ зачем, но без этого
+#     # не работает
+#     session.get(url_lk)
+#     # авторизируемся. Если в ответ получим 1, то значит все хорошо
+#     response =  session.post(url_auth, data=data)
+#     soup = BeautifulSoup(response.text, 'lxml')
+#     # еще раз просто загрузаем страницу ЛК, иначе в дельнейшем у нас не будут грузится страницы для
+#     # парсинга. Она нам не нужна, но без ее загрузки ничего не работает. ХЗ почему, это ведь бонч.
+#     session.get(url_lk)
+#     return soup.p.text == '1'
+
+async def auth_lk(session):
     # функция прохождения авторизации на портале. Если возвращает истину, то авторизация прошла успешно
     url_lk = 'https://lk.sut.ru/?login=yes'
     url_auth = 'https://lk.sut.ru/cabinet/lib/autentificationok.php'
@@ -20,74 +44,100 @@ def auth_lk():
         'users': LOGIN,
         'parole': PASSWORD,
     }
-    session.headers.update(headers)
+    #session.headers.update(headers)
     # просто загружаем страницу авторизации, чтоб открыть сессию на сервере. ХЗ зачем, но без этого
     # не работает
-    session.get(url_lk)
+    await session.get(url_lk, headers=headers)
     # авторизируемся. Если в ответ получим 1, то значит все хорошо
-    response =  session.post(url_auth, data=data)
-    soup = BeautifulSoup(response.text, 'lxml')
+    response = await session.post(url_auth, data=data)
+    resp_t = await response.text()
+    soup = BeautifulSoup(resp_t, 'lxml')
     # еще раз просто загрузаем страницу ЛК, иначе в дельнейшем у нас не будут грузится страницы для
     # парсинга. Она нам не нужна, но без ее загрузки ничего не работает. ХЗ почему, это ведь бонч.
-    session.get(url_lk)
+    await session.get(url_lk)
     return soup.p.text == '1'
 
-def files_count_range():
+async def files_count_range(session):
     # функция подсчета количества страниц с файлами группам. Возвращает число страниц.
     url_forms_gr = 'https://lk.sut.ru/project/cabinet/forms/files_group_pr.php'
-    response =  session.get(url_forms_gr)
-    soup = BeautifulSoup(response.text, 'lxml')
+    response = await session.get(url_forms_gr)
+    response_text = await response.text()
+    soup = BeautifulSoup(response_text, 'lxml')
     soup = soup.find("span", id="table_mes")
     # номер последней страницы содержится внутри span в теге <a>, где строка " >> "
     child_span_a=soup.find("a", string=" >> ")
     # Нужное значение находится в строке в параметре onclick
     child_span_a=child_span_a.get("onclick")
     # Перед тем как вернуть, преобразуем значение в число
-    return int(child_span_a[-4:-2])
+    files_count_range_result=int(child_span_a[-4:-2])
+    return files_count_range_result
 
-async def fetch_async(loop, async_files_count_range):
+async def fetch_url_data(session, url_list_files_gr):
+   async with session.get(url_list_files_gr, timeout=30) as response:
+        resp = await response.text()
+        soup = BeautifulSoup(resp, 'lxml')
+        # переходиим в таблицу с данными
+        soup = soup.find("table", id="mytable")
+        soup = soup.tbody
+        files_group=[]
+        # Цикл для всех строк (записей) в таблице. Строки обособлены тегом <tr>, а у нужным нам строк
+        # id начинается на tr. Находим таки строки с помощью регулярного выражения
+        for child_tr in soup.find_all("tr", id=re_comp("^tr")):
+            # объявляем list, в котором будут все значения одной записи
+            files_params=[]
+            # каждое значение (ячейка столбца) внутри строки обособлена тегом <td>. Находим такие значения
+            num_td=0
+            for child_td in child_tr.find_all("td"):
+                # из столбцов 1-5 просто берем текстовые значения
+                if num_td < 5:
+                    files_params.append(child_td.text)
+                    num_td+=1
+                # в шестом столбце может хранится несколько ссылок на файлы, поэтому его обрабатываем отдельно
+                else:
+                    # обявляем list для всех ссылок текущей записи
+                    files_links=[]
+                    # каждая ссылка находится в параметре href тега <a>. Находим такие теги и берем из
+                    # них значение параметра.
+                    for child_a in child_td.find_all("a"):
+                            files_links.append(child_a.get("href"))
+                    files_params.append(files_links)
+                    break
+            files_group.append(files_params)
+        return files_group
+
+async def fetch_async(loop):
+    url_forms_gr = "https://lk.sut.ru/project/cabinet/forms/files_group_pr.php"
     tasks = []
     async with ClientSession() as session:
-        for page in range(1, async_files_count_range):
-            response =  session.get(url_forms_gr + '?page=' + str(page))
-            soup = BeautifulSoup(response.text, 'lxml')
-            # переходиим в таблицу с данными
-            soup = soup.find("table", id="mytable")
-            soup = soup.tbody
-            # Цикл для всех строк (записей) в таблице. Строки обособлены тегом <tr>, а у нужным нам строк
-            # id начинается на tr. Находим таки строки с помощью регулярного выражения
-            for child_tr in soup.find_all("tr", id=re_comp("^tr")):
-                # объявляем list, в котором будут все значения одной записи
-                files_params=[]
-                # каждое значение (ячейка столбца) внутри строки обособлена тегом <td>. Находим такие значения
-                num_td=0
-                for child_td in child_tr.find_all("td"):
-                    # из столбцов 1-5 просто берем текстовые значения
-                    if num_td < 5:
-                        files_params.append(child_td.text)
-                        num_td+=1
-                    # в шестом столбце может хранится несколько ссылок на файлы, поэтому его обрабатываем отдельно
-                    else:
-                        # обявляем list для всех ссылок текущей записи
-                        files_links=[]
-                        # каждая ссылка находится в параметре href тега <a>. Находим такие теги и берем из
-                        # них значение параметра.
-                        for child_a in child_td.find_all("a"):
-                                files_links.append(child_a.get("href"))
-                        files_params.append(files_links)
-                        break
-                files_group.append(files_params)
-
-
+        auth_lk_result = await auth_lk(session)
+        if auth_lk_result:
+            async_files_count_range = await files_count_range(session)+1
+            for page in range(1, async_files_count_range):
+                task = asyncio.ensure_future(fetch_url_data(session, url_forms_gr + '?page=' + str(page)))
+                tasks.append(task)
+            responses = await asyncio.gather(*tasks)
+            responses_with_err=[1, responses]
+        else:
+            responses_with_err=[0]
+    return responses_with_err
+    
 def get_all_files_group():
     # функция парсинга файлов группы. Возвращает list с полученными занчениями
-    url_forms_gr = 'https://lk.sut.ru/project/cabinet/forms/files_group_pr.php'
     # объявлям list, в котором будут все записи
     files_group=[]
     loop = asyncio.get_event_loop()
-    future = asyncio.ensure_future(fetch_async(loop, files_count_range()+1))
+    future = asyncio.ensure_future(fetch_async(loop))
+    # будет выполняться до тех пор, пока не завершится или не возникнет ошибка
+    loop.run_until_complete(future)
+    responses = future.result()
+    return responses
+
+    # url_forms_gr = 'https://lk.sut.ru/project/cabinet/forms/files_group_pr.php'
+    # future_tasks=[fetch_url_data(url_forms_gr + '?page=' + str(page)) for page in range(1, files_count_range()+1)]
+    # loop = asyncio.get_event_loop()
+    # loop.run_until_complete(asyncio.wait(future_tasks))
     
-    return files_group
+   
 
 def number_week_null():
     # функция определения номера нулевой недели. Возвращает номер недели.
@@ -154,15 +204,21 @@ def get_all_timetable():
         tt_all=False
     return tt_all
 
-#session = req_session()
 start_time=time.time()
-if auth_lk():
-    print(get_all_files_group()[0])
-#    timetable = get_all_timetable()
-#     if timetable:
-#         print(timetable[17])
-#     else:
-#         print('Произошла ошибка при парсинге расписания')
+get_fg_res = get_all_files_group()
+come_time=time.time()
+if get_fg_res[0] == 1:
+    get_fg_res=get_fg_res[1]
+    print(get_fg_res)
 else:
     print('Авторизация неуспешна, проверьте параметры авторизации.')
-print('Время выполнения запроса:', time.time()-start_time)
+
+    # timetable = get_all_timetable()
+    # if timetable:
+    #     print(timetable[17])
+    # else:
+    #     print('Произошла ошибка при парсинге расписания')
+# else:
+#     print('Авторизация неуспешна, проверьте параметры авторизации.')
+print('Время выполнения запроса:', come_time-start_time)
+print('Полное время обработки запроса:', time.time()-start_time)

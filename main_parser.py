@@ -3,7 +3,7 @@ from auth_params import *
 from re import compile as re_comp, search as re_search, split as re_split
 import asyncio
 import time
-from aiohttp import ClientSession
+from aiohttp import ClientSession, ClientTimeout
 
 async def auth_lk(session):
     # функция прохождения авторизации на портале. Если возвращает истину, то авторизация прошла успешно
@@ -103,6 +103,12 @@ def get_all_files_group():
     # будет выполняться до тех пор, пока не завершится или не возникнет ошибка
     loop.run_until_complete(future)
     responses = future.result()
+    if responses[0] == 1:
+        new_mass=[]
+        for get_all_tt_list in responses[1]:
+            for get_all_tt_list_in in get_all_tt_list:
+                new_mass.append(get_all_tt_list_in)
+        responses[1]=new_mass
     return responses
 
 async def async_get_week(session, week_pool, week_num):
@@ -119,7 +125,7 @@ async def async_get_week(session, week_pool, week_num):
 async def async_get_all_timetable(session, week):
     # функция парсинга всего распиания. Возвращает list с полученными значениями
     url_forms_tt = 'https://lk.sut.ru/project/cabinet/forms/raspisanie.php'
-    async with session.get(url_forms_tt + '?week=' + str(week), timeout=30) as response:
+    async with session.get(url_forms_tt + '?week=' + str(week)) as response:
         response_text = await response.text()
         soup = BeautifulSoup(response_text, 'lxml')
         # объявляем и начинаем заполнять list, в котором будут данные одной недели. Указываем номер
@@ -165,7 +171,8 @@ async def async_number_week_num(loop):
     header_new = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/94.0.4606.61 Safari/537.36'
     }
-    async with ClientSession(headers=header_new) as session:
+    timeout_cl = ClientTimeout(total=600)
+    async with ClientSession(headers=header_new, timeout=timeout_cl) as session:
         auth_lk_result = await auth_lk(session)
         if auth_lk_result:
             for week_search_pool in range (3):
@@ -204,26 +211,35 @@ def get_all_timetable():
     responses = future.result()
     return responses
 
+def print_get_tt():
+    get_tt_res = get_all_timetable()
+    come_time=time.time()
+    if get_tt_res[0] == 1:
+        get_tt_res=get_tt_res[1]
+        print(get_tt_res)
+    else:
+        if get_tt_res[1] == 0:
+            print('Error 0: Авторизация неуспешна, проверьте параметры авторизации.')
+        elif get_tt_res[1] == 1:
+            print('Error 1: Ошибка запроса количества учебных недель.')
+    return come_time
+
+def print_get_fg():
+    get_fg_res = get_all_files_group()
+    come_time=time.time()
+    if get_fg_res[0] == 1:
+        get_fg_res=get_fg_res[1]
+        print(get_fg_res)
+    else:
+        if get_fg_res[1] == 0:
+            print('Error 0: Авторизация неуспешна, проверьте параметры авторизации.')
+    return come_time
+
 start_time=time.time()
-# get_fg_res = get_all_files_group()
-get_tt_res = get_all_timetable()
-come_time=time.time()
-# if get_fg_res[0] == 1:
-#     get_fg_res=get_fg_res[1]
-#     print(get_fg_res)
-# else:
-#     if get_fg_res[1] == 0:
-#         print('Error 0: Авторизация неуспешна, проверьте параметры авторизации.')
+#come_time=print_get_tt()
+#come_time=print_get_fg()
 
 
-if get_tt_res[0] == 1:
-    get_tt_res=get_tt_res[1]
-    print(get_tt_res)
-else:
-    if get_tt_res[1] == 0:
-        print('Error 0: Авторизация неуспешна, проверьте параметры авторизации.')
-    elif get_tt_res[1] == 1:
-        print('Error 1: Ошибка запроса количества учебных недель.')
 
 print('Время выполнения запроса:', int((come_time-start_time)*1000), 'ms')
 print('Полное время обработки запроса:', int((time.time()-start_time)*1000), 'ms')

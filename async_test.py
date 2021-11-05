@@ -41,8 +41,7 @@ async def fetch_url_data(session, url):
     resp2 = BeautifulSoup(resp, 'lxml')
     #print(resp2)
     #print(session)
-    resp3=[resp2]
-    return resp3
+    return resp2
 
 
 async def fetch_async(loop, r):

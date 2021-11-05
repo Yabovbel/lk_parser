@@ -3,7 +3,7 @@ from auth_params import *
 from re import compile as re_comp, search as re_search, split as re_split
 import asyncio
 import time
-from aiohttp import ClientSession, ClientTimeout
+from aiohttp import ClientSession, TCPConnector, ClientTimeout
 
 async def auth_lk(session):
     # функция прохождения авторизации на портале. Если возвращает истину, то авторизация прошла успешно
@@ -44,7 +44,7 @@ async def files_count_range(session):
     return files_count_range_result
 
 async def fetch_url_data(session, url_list_files_gr):
-   async with session.get(url_list_files_gr, timeout=30) as response:
+    async with session.get(url_list_files_gr, timeout=60) as response:
         resp = await response.text()
         soup = BeautifulSoup(resp, 'lxml')
         # переходиим в таблицу с данными
@@ -82,7 +82,9 @@ async def fetch_async(loop):
     header_new = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/94.0.4606.61 Safari/537.36'
     }
-    async with ClientSession(headers=header_new) as session:
+    conn = TCPConnector(limit=5)
+    timeout = ClientTimeout(total=60)
+    async with ClientSession(headers=header_new, timeout=timeout, connector=conn) as session:
         auth_lk_result = await auth_lk(session)
         if auth_lk_result:
             async_files_count_range = await files_count_range(session)+1
@@ -125,45 +127,48 @@ async def async_get_week(session, week_pool, week_num):
 async def async_get_all_timetable(session, week):
     # функция парсинга всего распиания. Возвращает list с полученными значениями
     url_forms_tt = 'https://lk.sut.ru/project/cabinet/forms/raspisanie.php'
-    async with session.get(url_forms_tt + '?week=' + str(week)) as response:
-        response_text = await response.text()
-        soup = BeautifulSoup(response_text, 'lxml')
-        # объявляем и начинаем заполнять list, в котором будут данные одной недели. Указываем номер
-        # недели, парсим начальную и конечную дату недели
-        tt_week = [week, soup.h3.text[-27:-16], soup.h3.text[-13:-3]]
-        # проверяем наличие занятий на неделе
-        if soup.find("div", {"class": "alert alert-info"}, string="Занятий не найдено") == None:
-            soup = soup.table
-            soup = soup.tbody
-            # объявляем list, котором будет инфа о всех днях
-            tt_day=[]
-            # считает номер текущего дня в неделе, для заполнения list
-            day_number=-1
-            # Цикл для всех строк в таблице. Строки обособлены тегом <tr>.
-            for child_tr in soup.find_all("tr"):
-                # строки (в которых указана дата, а не занятие), которые начинают день имеют параметр
-                # style. По наличию его, мы их и различаем
-                if child_tr.get("style") != None:
-                    day_number += 1
-                    # добавляем новый день в list всех дней. Укзаываем название дня недели, дату и
-                    # оставляем пустой list для заполнения занятиями
-                    tt_day.append([child_tr.b.text, child_tr.small.text,[]])
-                else:
-                    one_day=[]
-                    num_td=0
-                    for child_td in child_tr.find_all("td"):
-                        if num_td == 1:
-                            one_day.append(child_td.b.text)
-                            # Костыль, как убрать не придумал
-                            type_lesson=str(child_td.small)[7:-8]
-                            one_day.append(type_lesson.split("<br/>")[0])
-                        else:
-                            one_day.append(child_td.text)
-                        num_td+=1
-                    tt_day[day_number][2].append(one_day)
-            tt_week.append(tt_day)
-        else:
-            tt_week.append(None)
+    try:
+        async with session.get(url_forms_tt + '?week=' + str(week), timeout=30) as response:
+            response_text = await response.text()
+            soup = BeautifulSoup(response_text, 'lxml')
+            # объявляем и начинаем заполнять list, в котором будут данные одной недели. Указываем номер
+            # недели, парсим начальную и конечную дату недели
+            tt_week = [week, soup.h3.text[-27:-16], soup.h3.text[-13:-3]]
+            # проверяем наличие занятий на неделе
+            if soup.find("div", {"class": "alert alert-info"}, string="Занятий не найдено") == None:
+                soup = soup.table
+                soup = soup.tbody
+                # объявляем list, котором будет инфа о всех днях
+                tt_day=[]
+                # считает номер текущего дня в неделе, для заполнения list
+                day_number=-1
+                # Цикл для всех строк в таблице. Строки обособлены тегом <tr>.
+                for child_tr in soup.find_all("tr"):
+                    # строки (в которых указана дата, а не занятие), которые начинают день имеют параметр
+                    # style. По наличию его, мы их и различаем
+                    if child_tr.get("style") != None:
+                        day_number += 1
+                        # добавляем новый день в list всех дней. Укзаываем название дня недели, дату и
+                        # оставляем пустой list для заполнения занятиями
+                        tt_day.append([child_tr.b.text, child_tr.small.text,[]])
+                    else:
+                        one_day=[]
+                        num_td=0
+                        for child_td in child_tr.find_all("td"):
+                            if num_td == 1:
+                                one_day.append(child_td.b.text)
+                                # Костыль, как убрать не придумал
+                                type_lesson=str(child_td.small)[7:-8]
+                                one_day.append(type_lesson.split("<br/>")[0])
+                            else:
+                                one_day.append(child_td.text)
+                            num_td+=1
+                        tt_day[day_number][2].append(one_day)
+                tt_week.append(tt_day)
+            else:
+                tt_week.append(None)
+    except Exception as e:
+        print(e)
     return tt_week
 
 async def async_number_week_num(loop):
@@ -171,8 +176,9 @@ async def async_number_week_num(loop):
     header_new = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/94.0.4606.61 Safari/537.36'
     }
-    timeout_cl = ClientTimeout(total=600)
-    async with ClientSession(headers=header_new, timeout=timeout_cl) as session:
+    #timeout_cl = ClientTimeout(total=600)
+    conn = TCPConnector(limit=10)
+    async with ClientSession(headers=header_new, connector=conn) as session:
         auth_lk_result = await auth_lk(session)
         if auth_lk_result:
             for week_search_pool in range (3):
@@ -236,8 +242,9 @@ def print_get_fg():
     return come_time
 
 start_time=time.time()
+come_time=print_get_fg()
 #come_time=print_get_tt()
-#come_time=print_get_fg()
+
 
 
 

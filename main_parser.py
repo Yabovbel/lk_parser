@@ -177,8 +177,9 @@ async def async_number_week_num(loop):
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/94.0.4606.61 Safari/537.36'
     }
     #timeout_cl = ClientTimeout(total=600)
-    conn = TCPConnector(limit=10)
-    async with ClientSession(headers=header_new, connector=conn) as session:
+    conn = TCPConnector(limit=5)
+    timeout = ClientTimeout(total=60)
+    async with ClientSession(headers=header_new, timeout=timeout, connector=conn) as session:
         auth_lk_result = await auth_lk(session)
         if auth_lk_result:
             for week_search_pool in range (3):
@@ -244,9 +245,6 @@ def print_get_fg():
 start_time=time.time()
 come_time=print_get_fg()
 #come_time=print_get_tt()
-
-
-
 
 print('Время выполнения запроса:', int((come_time-start_time)*1000), 'ms')
 print('Полное время обработки запроса:', int((time.time()-start_time)*1000), 'ms')

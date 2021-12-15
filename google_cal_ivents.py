@@ -2,7 +2,6 @@ import pickle
 import os
 import datetime
 import main_parser
-#from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow, InstalledAppFlow
 from google_auth_oauthlib.helpers import credentials_from_session
 from googleapiclient.discovery import build
@@ -10,34 +9,46 @@ from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
 from google.auth.transport.requests import Request
 from datetime import datetime, timedelta
 import json
-caal_list, calendar_id, timeZone, current_cal,datetime1,summary,description,location,start_time1,endtime1 = 0,0,0,0,0,0,0,0,0,0
-
 SCOPES = ['https://www.googleapis.com/auth/calendar']
 flow = InstalledAppFlow.from_client_secrets_file('client_secret.json', scopes = SCOPES)
-##credentials = flow.run_console()
-##pickle.dump(credentials, open("token.pkl", "wb"))
-#credentials = pickle.load(open("token.pkl", "rb"))
-#service = build("calendar", "v3", credentials=credentials)
-def auth():
-    #!/usr/bin/env python
-    # -*- coding: utf-8 -*-
-    global service
+
+def auth(client_secret_file, api_name, api_version, *scopes, prefix=''):
+    
+    CLIENT_SECRET_FILE = 'client_secret.json'
+    API_SERVICE_NAME = api_name
+    API_VERSION = api_version
+    SCOPES = [scope for scope in scopes[0]]
+    
+    cred = None
+    working_dir = os.getcwd()
+    token_dir = 'token files'
+    pickle_file = f'token_{API_SERVICE_NAME}_{API_VERSION}{prefix}.pickle'
+    if not os.path.exists(os.path.join(working_dir, token_dir)):
+        os.mkdir(os.path.join(working_dir, token_dir))
+
+    if os.path.exists(os.path.join(working_dir, token_dir, pickle_file)):
+        with open(os.path.join(working_dir, token_dir, pickle_file), 'rb') as token:
+            cred = pickle.load(token)
+
+    if not cred or not cred.valid:
+        if cred and cred.expired and cred.refresh_token:
+            cred.refresh(Request())
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file(CLIENT_SECRET_FILE, SCOPES)
+            cred = flow.run_local_server()
+
+        with open(os.path.join(working_dir, token_dir, pickle_file), 'wb') as token:
+            pickle.dump(cred, token)
+
     try:
-        file = open('token.pkl')
-    except IOError as e:
-        print(u'sign up')
-        credentials = flow.run_console()
-        pickle.dump(credentials, open("token.pkl", "wb"))
-    else:
-        with file:
-            print(u'auth')
-            credentials = pickle.load(open("token.pkl", "rb"))
-            service = build("calendar", "v3", credentials=credentials)
-
-
-
-    return credentials
-
+        service = build(API_SERVICE_NAME, API_VERSION, credentials=cred)
+        print(API_SERVICE_NAME, API_VERSION, 'service created successfully')
+        return service
+    except Exception as e:
+        print(e)
+        print(f'Failed to create service instance for {API_SERVICE_NAME}')
+        os.remove(os.path.join(working_dir, token_dir, pickle_file))
+        return None
 def cal_list():
     global caal_list, calendar_id, timeZone, current_cal
     caal_list = service.calendarList().list().execute()
@@ -48,11 +59,14 @@ def cal_list():
     current_cal = int(input("Choose the calendar you want: "))
     timeZone = caal_list['items'][current_cal]['timeZone']
     calendar_id = caal_list['items'][current_cal]['id']
-    return caal_list, calendar_id, timeZone, current_cal
+    
 
 def parser():
     global summary, location, description, datetime1,start_time1,endtime1
     timetable = main_parser.get_all_timetable()
+    for l in range(len(timetable)):
+        print('Week',l+1, ':', timetable[l][1:3])
+
     week = int(input("choose getting week: "))
     event = []
     number_of_days = len(timetable[week-1][3])
@@ -121,7 +135,12 @@ def create_event():
     }
     service.events().insert(calendarId=calendar_id, body=event).execute()
     return
-auth()
+if __name__ == '__main__':
+    API_NAME = 'calendar'
+    API_VERSION = 'v3'
+    SCOPES = ['https://www.googleapis.com/auth/calendar']
+    CLIENT_FILE = 'client-secret.json'
+    service = auth(CLIENT_FILE, API_NAME, API_VERSION, SCOPES, 'x')
 cal_list()
 parser()
 #create_event()

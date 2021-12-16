@@ -64,6 +64,8 @@ def cal_list():
 def parser():
     global summary, location, description, datetime1,start_time1,endtime1
     timetable = main_parser.get_all_timetable()
+    print(111)
+    print(timetable)
     for l in range(len(timetable)):
         print('Week',l+1, ':', timetable[l][1:3])
 

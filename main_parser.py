@@ -1,4 +1,5 @@
 from bs4 import BeautifulSoup
+from requests.sessions import session
 from auth_params import *
 from re import compile as re_comp, search as re_search, split as re_split
 import asyncio
@@ -116,7 +117,8 @@ def get_all_files_group():
 async def async_get_week(session, week_pool, week_num):
     url_forms_tt = 'https://lk.sut.ru/project/cabinet/forms/raspisanie.php'
     week_search = week_num+week_pool*12+17
-    async with session.get(url_forms_tt + '?week=' + str(week_search)) as response:
+    print(222)
+    async with session.get(url_forms_tt + '?week=' + str(week_search), timeout=60) as response:
         resp_t_nwn = await response.text()
         soup = BeautifulSoup(resp_t_nwn, 'lxml')
         # перебираем недели до тех пор, пока не найдет неделю, в заголовке которой сочетание "№0 "
@@ -180,6 +182,7 @@ async def async_number_week_num(loop):
     conn = TCPConnector(limit=5)
     timeout = ClientTimeout(total=60)
     async with ClientSession(headers=header_new, timeout=timeout, connector=conn) as session:
+    # async with ClientSession(headers=header_new, timeout=60) as session:
         auth_lk_result = await auth_lk(session)
         if auth_lk_result:
             for week_search_pool in range (3):
@@ -195,13 +198,25 @@ async def async_number_week_num(loop):
                     break
             else:
                 return [0, 1]
-            for week in range(1, num_week):
-                task = asyncio.ensure_future(async_get_all_timetable(session, week))
-                tasks.append(task)
-            responses = await asyncio.gather(*tasks)
-            return [1, responses]
-        else:
-            return [0, 0]
+    return [1, num_week, session]
+
+async def async_number_week_num_faza_two(loop, num_week, session):
+    tasks = []
+    # header_new = {
+    #         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/94.0.4606.61 Safari/537.36'
+    # }
+    # #timeout_cl = ClientTimeout(total=600)
+    # conn = TCPConnector(limit=5)
+    # timeout = ClientTimeout(total=60)
+    # async with ClientSession(headers=header_new, timeout=timeout, connector=conn) as session:
+    # # async with ClientSession(headers=header_new, timeout=60) as session:
+    #     auth_lk_result = await auth_lk(session)
+    #     if auth_lk_result:
+    for week in range(1, num_week):
+        task = asyncio.ensure_future(async_get_all_timetable(session, week))
+        tasks.append(task)
+    responses = await asyncio.gather(*tasks)
+    return responses
 
 def get_all_timetable():
     # функция определения номера нулевой недели. Возвращает номер недели.
@@ -216,6 +231,11 @@ def get_all_timetable():
     # будет выполняться до тех пор, пока не завершится или не возникнет ошибка
     loop.run_until_complete(future)
     responses = future.result()
+    if responses[0]==1:
+        loop = asyncio.get_event_loop()
+        future = asyncio.ensure_future(async_number_week_num_faza_two(loop, responses[1], responses[2]))
+        # будет выполняться до тех пор, пока не завершится или не возникнет ошибка
+        loop.run_until_complete(future)
     return responses
 
 def print_get_tt():
@@ -246,7 +266,7 @@ def print_get_fg():
 #come_time=print_get_tt()
 #come_time=print_get_tt()
 
-#get_all_timetable()
+print(get_all_timetable())
 
 #print('Время выполнения запроса:', int((come_time-start_time)*1000), 'ms')
 #print('Полное время обработки запроса:', int((time.time()-start_time)*1000), 'ms')

@@ -1,7 +1,7 @@
 import pickle
 import os
 import datetime
-import main_parser
+import main_parser_sinh
 from google_auth_oauthlib.flow import Flow, InstalledAppFlow
 from google_auth_oauthlib.helpers import credentials_from_session
 from googleapiclient.discovery import build
@@ -63,7 +63,7 @@ def cal_list():
 
 def parser():
     global summary, location, description, datetime1,start_time1,endtime1
-    timetable = main_parser.get_all_timetable()
+    timetable = main_parser_sinh.get_all_timetable()
     for l in range(len(timetable)):
         print('Week',l+1, ':', timetable[l][1:3])
 

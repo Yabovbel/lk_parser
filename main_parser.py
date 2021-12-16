@@ -242,9 +242,11 @@ def print_get_fg():
             print('Error 0: Авторизация неуспешна, проверьте параметры авторизации.')
     return come_time
 
-start_time=time.time()
-come_time=print_get_fg()
+#start_time=time.time()
+#come_time=print_get_tt()
 #come_time=print_get_tt()
 
-print('Время выполнения запроса:', int((come_time-start_time)*1000), 'ms')
-print('Полное время обработки запроса:', int((time.time()-start_time)*1000), 'ms')
+#get_all_timetable()
+
+#print('Время выполнения запроса:', int((come_time-start_time)*1000), 'ms')
+#print('Полное время обработки запроса:', int((time.time()-start_time)*1000), 'ms')
